@@ -1,0 +1,22 @@
+[project]
+name = "pet-vet-rag-agent"
+version = "0.1.0"
+description = "RAG Agent for pet/veterinary knowledge — CNKI papers + local quantized Qwen"
+requires-python = ">=3.12"
+dependencies = [
+    "chromadb>=1.5.0",
+    "langchain-core>=1.4.0",
+    "langchain-community>=0.3.0",
+    "langchain-openai>=0.3.0",
+    "sentence-transformers>=5.5.0",
+    "pymupdf>=1.25.0",
+    "rank-bm25>=0.2.2",
+    "streamlit>=1.40.0",
+    "modelscope>=1.37.0",
+    "openai>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]

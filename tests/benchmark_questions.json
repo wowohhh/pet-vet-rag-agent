@@ -1,0 +1,153 @@
+{
+  "description": "20-question benchmark for pet vet RAG Agent evaluation",
+  "version": "1.0",
+  "categories": {
+    "symptom_inquiry": "症状咨询 — 用户描述症状，Agent 应检索文献并给出分析",
+    "emergency_triage": "紧急判断 — 需要识别高风险并建议就医",
+    "disease_knowledge": "疾病知识 — 询问特定疾病的病因/诊断/治疗",
+    "prevention_care": "预防护理 — 日常保健和预防措施",
+    "edge_case": "边界测试 — 知识库外的问题，应诚实说不知道"
+  },
+  "questions": [
+    {
+      "id": 1,
+      "category": "symptom_inquiry",
+      "question": "我的猫最近一周频繁打喷嚏，流清鼻涕，精神还好，吃饭也正常。这是什么问题？",
+      "expected_behavior": "应检索上呼吸道感染相关文献，提到猫疱疹病毒/杯状病毒，给出护理建议",
+      "scoring_criteria": ["引用文献", "提及病毒性病因", "建议观察/就医条件"]
+    },
+    {
+      "id": 2,
+      "category": "symptom_inquiry",
+      "question": "猫咪最近喝水特别多，尿也多了，体重在下降，但吃得比以前还多。可能是怎么回事？",
+      "expected_behavior": "应检索糖尿病相关文献，提到多饮多尿多食体重下降的典型症状",
+      "scoring_criteria": ["引用文献", "提示糖尿病可能", "建议就医检查血糖"]
+    },
+    {
+      "id": 3,
+      "category": "emergency_triage",
+      "question": "我的猫两天不吃东西了，一直呕吐，拉稀带血，精神特别差，缩在角落里不动。怎么办？",
+      "expected_behavior": "应识别为紧急情况，触发 triage_decision，建议立即就医",
+      "scoring_criteria": ["触发triage", "急诊/尽快就医", "不推荐自行用药"]
+    },
+    {
+      "id": 4,
+      "category": "disease_knowledge",
+      "question": "猫传染性腹膜炎（FIP）是什么病？现在有治疗方法吗？",
+      "expected_behavior": "应检索FIP相关文献，介绍病因（冠状病毒突变）、分型（湿性/干性）、GS-441524治疗",
+      "scoring_criteria": ["引用文献", "说明病因", "提到GS-441524", "说明分型"]
+    },
+    {
+      "id": 5,
+      "category": "disease_knowledge",
+      "question": "猫下泌尿道综合征（FLUTD）有哪些症状？公猫和母猫哪个更容易得？",
+      "expected_behavior": "应检索FLUTD相关文献，列出尿频/尿血/尿闭等症状，说明公猫风险更高",
+      "scoring_criteria": ["引用文献", "列出症状", "提到公猫风险", "建议就医"]
+    },
+    {
+      "id": 6,
+      "category": "symptom_inquiry",
+      "question": "猫咪嘴巴很臭，牙龈红肿，吃东西时好像很痛苦。这是什么口腔问题？",
+      "expected_behavior": "应检索猫慢性龈口炎相关文献",
+      "scoring_criteria": ["引用文献", "提及龈口炎/FCGS", "提到全口拔牙等治疗选项"]
+    },
+    {
+      "id": 7,
+      "category": "prevention_care",
+      "question": "小猫刚满两个月，需要打哪些疫苗？什么时候开始打？",
+      "expected_behavior": "应检索疫苗接种相关文献，提到核心疫苗（猫瘟/疱疹/杯状）和非核心疫苗",
+      "scoring_criteria": ["引用文献", "说明核心疫苗", "给出接种时间建议"]
+    },
+    {
+      "id": 8,
+      "category": "edge_case",
+      "question": "我的猫感冒了，能给它吃我吃的感冒药吗？比如感康或者白加黑？",
+      "expected_behavior": "必须明确拒绝推荐药物，说明人用药对猫有毒，建议就医",
+      "scoring_criteria": ["拒绝推荐药物", "说明人用药危险", "建议就医", "不推荐任何药物"]
+    },
+    {
+      "id": 9,
+      "category": "symptom_inquiry",
+      "question": "猫身上出现圆形脱毛，皮肤发红，有点皮屑，这是猫癣吗？",
+      "expected_behavior": "应检索猫皮肤癣菌病相关文献，描述症状、诊断方法",
+      "scoring_criteria": ["引用文献", "提及猫癣/真菌", "提到诊断方法"]
+    },
+    {
+      "id": 10,
+      "category": "disease_knowledge",
+      "question": "猫瘟是什么？怎么预防？小猫多大需要打猫瘟疫苗？",
+      "expected_behavior": "应检索猫泛白细胞减少症相关文献，说明病因（细小病毒）和疫苗接种",
+      "scoring_criteria": ["引用文献", "说明病因", "提到疫苗接种", "说明易感群体"]
+    },
+    {
+      "id": 11,
+      "category": "prevention_care",
+      "question": "猫咪需要定期驱虫吗？多久驱一次？体内和体外驱虫有什么区别？",
+      "expected_behavior": "应检索寄生虫防治相关文献，给出驱虫频率建议",
+      "scoring_criteria": ["引用文献", "区分体内外驱虫", "给出频率建议", "说明常见寄生虫"]
+    },
+    {
+      "id": 12,
+      "category": "emergency_triage",
+      "question": "猫咪突然尿不出来，蹲在猫砂盆里很久，一直叫，看起来很痛苦。这已经持续大半天了。",
+      "expected_behavior": "应识别为尿闭，属于急诊，触发triage_decision建议立即就医",
+      "scoring_criteria": ["触发triage", "识别尿闭", "急诊建议", "说明公猫常见"]
+    },
+    {
+      "id": 13,
+      "category": "disease_knowledge",
+      "question": "猫慢性肾病（CKD）是什么？老年猫常见吗？早期有什么信号？",
+      "expected_behavior": "应检索CKD相关文献，说明高发于老年猫，早期症状不明显",
+      "scoring_criteria": ["引用文献", "提及发病率和年龄", "列出早期信号", "建议定期体检"]
+    },
+    {
+      "id": 14,
+      "category": "symptom_inquiry",
+      "question": "小猫拉肚子三天了，便便是黄色的稀水样，但是精神还不错，还在吃奶。需要去医院吗？",
+      "expected_behavior": "应分析幼猫腹泻原因，区分是否需要就医",
+      "scoring_criteria": ["分析可能原因", "给出就医判断标准", "不推荐药物"]
+    },
+    {
+      "id": 15,
+      "category": "edge_case",
+      "question": "中国宠物猫中 FIV（猫艾滋病）的流行率是多少？怎么治疗？",
+      "expected_behavior": "如果知识库无相关中文文献，应诚实说未找到足够文献",
+      "scoring_criteria": ["诚实说明限制", "提供已知信息", "不编造数据"]
+    },
+    {
+      "id": 16,
+      "category": "prevention_care",
+      "question": "猫咪一直吃干粮好还是湿粮好？怎么判断猫咪的饮食是否健康？",
+      "expected_behavior": "应给出基于文献的营养建议",
+      "scoring_criteria": ["基于文献", "对比干湿粮", "说明饮水重要性", "提到猫是专性食肉动物"]
+    },
+    {
+      "id": 17,
+      "category": "symptom_inquiry",
+      "question": "猫咪最近总是抓耳朵，耳朵里有黑色分泌物，有时候甩头。这是什么问题？",
+      "expected_behavior": "应检索耳部感染/耳螨相关文献",
+      "scoring_criteria": ["引用文献", "提到耳螨或耳部感染", "建议就医确诊"]
+    },
+    {
+      "id": 18,
+      "category": "disease_knowledge",
+      "question": "猫肥厚性心肌病（HCM）是什么？哪些品种的猫容易得？能治吗？",
+      "expected_behavior": "应检索HCM相关文献，说明品种倾向（缅因/布偶等）和管理方案",
+      "scoring_criteria": ["引用文献", "提及品种倾向", "说明不可治愈但可管理"]
+    },
+    {
+      "id": 19,
+      "category": "emergency_triage",
+      "question": "猫从二楼窗户掉下去了，现在走路有点瘸，呼吸急促，但没看到明显外伤。要马上去医院吗？",
+      "expected_behavior": "应识别为潜在紧急情况（内伤可能），建议立即就医",
+      "scoring_criteria": ["触发triage", "识别内伤风险", "建议尽快就医"]
+    },
+    {
+      "id": 20,
+      "category": "edge_case",
+      "question": "我听说猫得了传腹就死定了，现在2025年了还是这样吗？有没有新的治疗方法？",
+      "expected_behavior": "应检索FIP最新治疗进展（GS-441524），纠正'必死'的过时观念",
+      "scoring_criteria": ["引用最新文献", "纠正过时认知", "提到GS-441524", "说明治疗前景"]
+    }
+  ]
+}
