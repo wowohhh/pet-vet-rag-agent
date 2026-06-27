@@ -127,13 +127,43 @@
 
 ---
 
+## 9. 流式输出：Streamlit 不支持 SSE 原生的替代方案
+
+**现象**: 需要实现 P0 流式输出降低用户感知延迟，Streamlit 不原生支持 SSE。
+
+**方案**: 不通过 HTTP API→SSE 路径，而是在 Streamlit 进程内直接调用 `chat_stream()` generator，用 `st.empty()` placeholder 逐 token 更新 UI。
+
+**启示**: Streamlit 的架构决定了它不适合做实时流式——但 `st.write_stream()` 和手动 placeholder 方案可以做到近似效果。生产环境会用 FastAPI SSE + 前端 WebSocket。
+
+**关键词**: streaming, SSE, Streamlit, real-time, UI rendering
+
+---
+
+## 10. 结构化输出：`\s` 正则陷阱（编排层）
+
+**现象**: `_extract_citations()` 解析 `search_knowledge_base` 结果时，标题字段被跨行匹配到期刊字段。
+
+**根因**: Python 正则 `\s` 包含 `\n`，`\*\*标题\*\*:\s*(.*?)` 在空标题场景下跳过换行符，捕获到下一行内容。
+
+**解决**: `\s*` → `[ \t]*`，仅匹配水平空白。
+
+**启示**: 逐行结构化文本解析时，必须注意 `\s` 的换行语义。防御性正则习惯：用 `[ \t]` 而非 `\s` 做字段内空白匹配。
+
+**关键词**: regex, \s, structured parsing, Python
+
+---
+
 ## 总结
 
 | # | 问题 | 根因类型 | 通用度 |
 |---|------|---------|--------|
-| 1 | Ollama 中文路径 | Rust/C++ Windows 编码 | 高（同类库通用） |
-| 2 | thinking token 耗尽 | 模型特性理解不足 | 高（推理模型通用） |
+| 1 | Ollama 中文路径 | Rust/C++ Windows 编码 | 高 |
+| 2 | thinking token 耗尽 | 模型特性理解不足 | 高 |
 | 3 | content=None 拒绝 | API 兼容性细节 | 中 |
-| 4 | context 过度工程 | 架构设计失误 | 高（工程方法论） |
+| 4 | context 过度工程 | 架构设计失误 | 高 |
 | 5 | ChromaDB HNSW 错误 | 同 #1（Rust 路径编码） | 高 |
-| 6 | CNKI 无法 curl 下载 | 平台特化 + 自动化策略 | 中（国内平台通用） |
+| 6 | CNKI 无法 curl 下载 | 平台特化 + 自动化策略 | 中 |
+| 7 | `\s` 吞换行导致引用解析错误 | 正则语义理解 | 中 |
+| 8 | Ollama env var 重启丢失 | Windows 环境变量传递 | 中 |
+| 9 | Streamlit 不支持流式 SSE | 框架架构限制 | 低 |
+| 10 | 结构化输出字段提取 | 同 #7（正则语义） | 中 |
