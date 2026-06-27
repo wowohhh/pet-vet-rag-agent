@@ -134,13 +134,14 @@ python -m src.cli
 
 ## Agent 核心能力
 
-### 三个 Tool
+### 四个 Tool
 
 | Tool | 功能 | 关键技术 |
 |------|------|---------|
 | `search_knowledge_base` | 检索知识库 | ChromaDB 向量检索 + BM25 稀疏检索 + RRF 融合 |
 | `analyze_symptoms` | 分析症状 | 结构化提取症状 + 可能疾病方向 + 文献依据 |
 | `triage_decision` | 就医决策 | 急诊信号检测 → 急诊/尽快就医/居家观察 三级 |
+| `search_cnki` | 知网搜索 | 本地无结果时通过网络检索知网论文摘要作为补充 |
 
 ### 安全 Guardrails
 
@@ -207,7 +208,7 @@ rag/
 │   │
 │   ├── agent/
 │   │   ├── orchestrator.py  # ReAct Agent 核心
-│   │   ├── tools.py         # 3 个 Tool 实现
+│   │   ├── tools.py         # 4 个 Tool 实现
 │   │   ├── prompts.py       # System prompt + guardrails
 │   │   └── context.py       # 上下文工程 + token 预算
 │   │
