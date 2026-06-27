@@ -1,8 +1,8 @@
 # 🐱 宠物兽医知识助手 — RAG Agent
 
-> **基于学术文献的猫咪健康 RAG Agent · 本地量化模型推理 · 全链路工程实现**
+> **从零实现的 ReAct Agent 系统（非 LangChain 封装）· 消费级 GPU 本地部署 · 30 篇学术论文知识库 · 95% 引用率 0% 拒答**
 >
-> 每句话都有出处 · 高风险建议需人工确认 · 不推荐药物
+> 每句话都有出处 · 高风险建议需人工确认 · 不推荐药物 · [工程日志](ENGINEERING_LOG.md) 10 个 debug 案例
 
 [![Python](https://img.shields.io/badge/Python-3.12-blue)](https://python.org)
 [![Ollama](https://img.shields.io/badge/LLM-qwen3:4b-green)](https://ollama.com)

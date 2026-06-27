@@ -71,38 +71,28 @@ def _extract_citations(tool_results: list[dict]) -> list[Citation]:
         if tr["name"] not in ("search_knowledge_base", "search_cnki"):
             continue
         text = tr.get("result", "")
+        is_cnki = "🌐" in text or "知网检索结果" in text
 
-        # Parse local result format: "### 文献 N (相关度: X)\n**标题**: ...\n**期刊**: ..."
         blocks = re.split(r"### 文献 \d+", text)
         for block in blocks[1:]:
             title_match = re.search(r"\*\*标题\*\*:[ \t]*(.*?)(?:\n|$)", block)
             journal_match = re.search(r"\*\*期刊\*\*:[ \t]*(.*?)(?:\n|$)", block)
             year_match = re.search(r"\((\d{4})\)", block)
-            excerpt_match = re.search(r"\*\*摘录\*\*:[ \t]*(.+?)(?:\n|$)", block)
+            excerpt_key = "摘要" if is_cnki else "摘录"
+            excerpt_match = re.search(rf"\*\*{excerpt_key}\*\*:[ \t]*(.+?)(?:\n|$)", block)
 
             title = title_match.group(1).strip() if title_match and title_match.group(1).strip() else ""
             journal = journal_match.group(1).strip() if journal_match and journal_match.group(1).strip() else ""
             if not title and journal:
-                title = journal
+                title = journal  # fallback: use journal as title
+            if is_cnki and not journal:
+                journal = "知网网络检索"
 
             if title or excerpt_match:
                 citations.append(Citation(
                     title=title or "未知标题",
                     journal=journal,
                     year=year_match.group(1) if year_match else "",
-                    relevant_text=excerpt_match.group(1).strip()[:100] if excerpt_match else "",
-                ))
-
-        # Also parse CNKI web result format: "### 文献 N\n**标题**: ...\n**摘要**: ..."
-        cnki_blocks = re.split(r"### 文献 \d+", text)
-        for block in cnki_blocks[1:]:
-            title_match = re.search(r"\*\*标题\*\*:[ \t]*(.*?)(?:\n|$)", block)
-            excerpt_match = re.search(r"\*\*摘要\*\*:[ \t]*(.+?)(?:\n|$)", block)
-            if title_match and title_match.group(1).strip():
-                citations.append(Citation(
-                    title=title_match.group(1).strip(),
-                    journal="知网网络检索",
-                    year="",
                     relevant_text=excerpt_match.group(1).strip()[:100] if excerpt_match else "",
                 ))
     return citations
