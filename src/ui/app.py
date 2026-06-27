@@ -13,6 +13,7 @@ from src.api.models import (
     save_message, list_conversations, delete_conversation,
 )
 from src.observability.logger import get_recent_traces
+from src.observability.monitor import get_gpu_info, get_ollama_status, get_latency_stats
 
 st.set_page_config(
     page_title="宠物兽医知识助手",
@@ -80,6 +81,21 @@ def render_sidebar():
 
         chunk_count = get_chunk_count()
         st.metric("知识库片段", chunk_count)
+
+        # 🏗️ P2: Resource monitoring panel
+        st.divider()
+        st.caption("🖥️ 系统状态")
+        gpu = get_gpu_info()
+        ollama = get_ollama_status()
+        latency = get_latency_stats()
+        if gpu["vram_total_mb"]:
+            vram_pct = gpu["vram_used_mb"] / gpu["vram_total_mb"] * 100
+            st.progress(min(vram_pct / 100, 1.0), f"显存: {gpu['vram_used_mb']}/{gpu['vram_total_mb']} MB")
+        if ollama["models"]:
+            for m in ollama["models"]:
+                st.caption(f"🤖 {m['name']} ({m['vram_mb']}MB VRAM)")
+        if latency["count"]:
+            st.caption(f"⏱️ 延迟: avg {latency['avg_ms']}ms | last {latency['count']} calls")
 
         traces = get_recent_traces(5)
         if traces:

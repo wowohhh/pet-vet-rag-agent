@@ -21,6 +21,7 @@ from src.config import OLLAMA_BASE_URL, OLLAMA_MODEL, MAX_ITERATIONS
 from src.agent.prompts import SYSTEM_PROMPT, DISCLAIMER
 from src.agent.tools import search_knowledge_base, analyze_symptoms, triage_decision, search_cnki, EMERGENCY_SIGNS
 from src.observability.logger import Trace
+from src.observability.monitor import record_latency
 
 
 # ── 🏗️ Structured output types ──────────────────────────────────────────
@@ -279,6 +280,7 @@ class VetAgent:
         trace = Trace(query=user_message, conversation_id=conversation_id)
         self.messages.append({"role": "user", "content": user_message})
         self._last_tool_results = []
+        _start_time = time.time()
 
         full_messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -357,10 +359,12 @@ class VetAgent:
 
                 self.messages.append({"role": "assistant", "content": answer})
                 trace.finish(answer)
+                record_latency((time.time() - _start_time) * 1000)
                 return answer
 
         fallback = "抱歉，处理您的问题超时。请尝试简化问题。" + DISCLAIMER
         trace.finish(fallback)
+        record_latency((time.time() - _start_time) * 1000)
         return fallback
 
     # ── 🏗️ Streaming output ───────────────────────────────────────────
