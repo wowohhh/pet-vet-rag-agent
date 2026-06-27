@@ -99,6 +99,34 @@
 
 ---
 
+## 7. 结构化输出引用提取：`\s*` 吞掉换行符
+
+**现象**: `_extract_citations` 解析 `search_knowledge_base` 结果时，提取到的标题字段包含 `**期刊**: (2017)` 而非真实标题。
+
+**根因**: 正则 `\*\*标题\*\*:\s*(.*?)` 中的 `\s*` 匹配了换行符，导致 `(.*?)` 跨越了空标题行，匹配到下一行的 `**期刊**` 字段。
+
+**解决**: 将 `\s*` 替换为 `[ \t]*`（仅匹配水平空白符）。
+
+**启示**: Python 正则中 `\s` 包含 `\n`——在解析逐行结构化文本时必须注意。这是写解析器时的常见陷阱。
+
+**关键词**: regex, \s, newline, citation parsing
+
+---
+
+## 8. Ollama serve env var 重启后丢失
+
+**现象**: Ollama 服务在系统重启或新 shell 中重新以中文路径加载模型，导致 llama.cpp 报错。
+
+**根因**: bash 环境中 `export OLLAMA_MODELS` 只在当前 shell 生效。Ollama app 启动 ollama serve 时继承不到该环境变量。
+
+**解决**: 每次启动 Ollama 前先 `export OLLAMA_MODELS=C:/ollama_models`，或在启动脚本中设置。`setx` 永久设置对 GUI 应用可能不生效（需重启 Windows）。
+
+**启示**: Windows 环境下 GUI 应用和命令行工具的环境变量传递链路不同。持久化环境变量后需确认目标进程实际读取到。
+
+**关键词**: Ollama, env var, Windows, startup, persistence
+
+---
+
 ## 总结
 
 | # | 问题 | 根因类型 | 通用度 |

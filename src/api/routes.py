@@ -1,5 +1,6 @@
 """FastAPI routes for the RAG Agent."""
 
+import json
 import uuid
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -23,6 +24,9 @@ class ChatResponse(BaseModel):
     conversation_id: str
     response: str
     citations: list[dict] = []
+    triage: dict = {}
+    requires_confirmation: bool = False
+    source: str = "local"
 
 
 class ConversationMeta(BaseModel):
@@ -68,17 +72,26 @@ def chat(req: ChatRequest) -> ChatResponse:
 
     full_query = f"[宠物档案] {context}\n\n{req.message}" if context else req.message
 
-    # Get agent response
+    # 🏗️ Get structured agent response
     agent = get_agent()
-    response = agent.chat(full_query)
+    result = agent.chat_structured(full_query)
+    structured = result.to_dict()
 
-    # Save assistant response
-    models.save_message(conv_id, "assistant", response)
+    # Save assistant response with structured metadata
+    import json as _json
+    models.save_message(
+        conv_id, "assistant",
+        structured["answer"],
+        metadata=structured,
+    )
 
     return ChatResponse(
         conversation_id=conv_id,
-        response=response,
-        citations=[],
+        response=structured["answer"],
+        citations=structured.get("citations", []),
+        triage=structured.get("triage", {}),
+        requires_confirmation=structured.get("requires_confirmation", False),
+        source=structured.get("source", "local"),
     )
 
 
