@@ -20,6 +20,7 @@ from openai import OpenAI
 from src.config import OLLAMA_BASE_URL, OLLAMA_MODEL, MAX_ITERATIONS
 from src.agent.prompts import SYSTEM_PROMPT, DISCLAIMER
 from src.agent.tools import search_knowledge_base, analyze_symptoms, triage_decision, search_cnki, EMERGENCY_SIGNS
+from src.agent.context import trim_conversation
 from src.observability.logger import Trace
 from src.observability.monitor import record_latency
 
@@ -282,10 +283,10 @@ class VetAgent:
         self._last_tool_results = []
         _start_time = time.time()
 
-        full_messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            *self.messages,
-        ]
+        full_messages, summary = trim_conversation(
+            [{"role": "system", "content": SYSTEM_PROMPT}, *self.messages],
+            model=self.model,
+        )
 
         tools = _build_tools_for_api()
         tool_used = False
@@ -385,10 +386,10 @@ class VetAgent:
         self.messages.append({"role": "user", "content": user_message})
         self._last_tool_results = []
 
-        full_messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            *self.messages,
-        ]
+        full_messages, _ = trim_conversation(
+            [{"role": "system", "content": SYSTEM_PROMPT}, *self.messages],
+            model=self.model,
+        )
 
         tools = _build_tools_for_api()
         tool_used = False

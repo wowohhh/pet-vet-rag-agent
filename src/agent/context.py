@@ -116,3 +116,83 @@ def _truncate_text(text: str, token_budget: int, from_end: bool = True) -> str:
         return text[-target_chars:]
     else:
         return text[:target_chars]
+
+
+def estimate_message_tokens(messages: list[dict]) -> int:
+    """Estimate total tokens across all messages."""
+    total = 0
+    for m in messages:
+        content = m.get("content", "") or ""
+        total += estimate_tokens(content)
+        if m.get("tool_calls"):
+            for tc in m["tool_calls"]:
+                total += estimate_tokens(tc.get("function", {}).get("arguments", ""))
+    return total
+
+
+def trim_conversation(
+    messages: list[dict],
+    model: str = OLLAMA_MODEL,
+    max_ratio: float = 0.75,
+) -> tuple[list[dict], str]:
+    """Trim conversation history to fit within token budget.
+
+    Keeps system prompt + most recent exchanges. When trimming,
+    summarizes removed messages into a short context note.
+
+    Args:
+        messages: Full message list (system + user + assistant + tool...)
+        model: Model name for context window lookup
+        max_ratio: Max fraction of context window for conversation (default 75%)
+
+    Returns:
+        (trimmed_messages, summary_of_removed)
+    """
+    window = get_context_window(model)
+    budget = int(window * max_ratio)
+    current = estimate_message_tokens(messages)
+
+    if current <= budget:
+        return messages, ""
+
+    # Build from the end: keep most recent messages within budget
+    # Always keep system prompt (index 0)
+    sys_msg = messages[0] if messages and messages[0]["role"] == "system" else None
+    history = messages[1:] if sys_msg else messages
+
+    kept = []
+    used = estimate_tokens([sys_msg]) if sys_msg else 0
+    removed_count = 0
+
+    # Walk backwards through history, keep what fits
+    for m in reversed(history):
+        msg_tokens = estimate_message_tokens([m])
+        if used + msg_tokens <= budget:
+            kept.insert(0, m)
+            used += msg_tokens
+        else:
+            removed_count += 1
+            break  # reached budget limit, discard older messages
+
+    # Count all removed messages
+    remaining = len(history) - len(kept) - removed_count
+    removed_count += max(0, remaining)
+
+    # Build summary of removed exchanges
+    summary = ""
+    if removed_count > 0:
+        # Find the trimmed user messages for summary
+        trimmed_users = [
+            m.get("content", "")[:50]
+            for m in history[:removed_count]
+            if m.get("role") == "user"
+        ]
+        if trimmed_users:
+            summary = f"[历史对话摘要 — 共 {removed_count} 条消息已被截断] 用户曾问过: {'; '.join(trimmed_users[:5])}"
+
+    result = [sys_msg] if sys_msg else []
+    if summary:
+        result.append({"role": "system", "content": summary})
+    result.extend(kept)
+
+    return result, summary

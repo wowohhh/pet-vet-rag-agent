@@ -82,6 +82,14 @@ def render_sidebar():
         chunk_count = get_chunk_count()
         st.metric("知识库片段", chunk_count)
 
+        # 🏗️ Conversation context status
+        conv_messages = st.session_state.agent.messages if hasattr(st.session_state, 'agent') else []
+        turns = len([m for m in conv_messages if m['role'] == 'user'])
+        if turns:
+            from src.agent.context import estimate_message_tokens
+            tokens = estimate_message_tokens(conv_messages)
+            st.caption(f"💬 {turns} 轮对话 · ~{tokens} tokens → 上下文 {min(tokens*100//3200, 100)}%")
+
         # 🏗️ P2: Resource monitoring panel
         st.divider()
         st.caption("🖥️ 系统状态")
