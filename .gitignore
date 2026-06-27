@@ -24,6 +24,7 @@ data/papers/
 # Claude Code
 .claude/
 
-# OS
+# Personal notes (not for repo)
+RESUME.md
 .DS_Store
 Thumbs.db
