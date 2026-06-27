@@ -19,7 +19,7 @@ from dataclasses import dataclass, field, asdict
 from openai import OpenAI
 from src.config import OLLAMA_BASE_URL, OLLAMA_MODEL, MAX_ITERATIONS
 from src.agent.prompts import SYSTEM_PROMPT, DISCLAIMER
-from src.agent.tools import search_knowledge_base, analyze_symptoms, triage_decision, EMERGENCY_SIGNS
+from src.agent.tools import search_knowledge_base, analyze_symptoms, triage_decision, search_cnki, EMERGENCY_SIGNS
 from src.observability.logger import Trace
 
 
@@ -63,15 +63,16 @@ class StructuredAnswer:
 # ── 🏗️ Parsing helpers ──────────────────────────────────────────────────
 
 def _extract_citations(tool_results: list[dict]) -> list[Citation]:
-    """Extract structured citations from search_knowledge_base results."""
+    """Extract structured citations from search_knowledge_base and search_cnki results."""
     citations = []
     for tr in tool_results:
-        if tr["name"] != "search_knowledge_base":
+        if tr["name"] not in ("search_knowledge_base", "search_cnki"):
             continue
         text = tr.get("result", "")
-        # Parse "### 文献 N (相关度: X)\n**标题**: ...\n**期刊**: ... (YEAR)\n**摘录**: ..."
+
+        # Parse local result format: "### 文献 N (相关度: X)\n**标题**: ...\n**期刊**: ..."
         blocks = re.split(r"### 文献 \d+", text)
-        for block in blocks[1:]:  # skip empty first split
+        for block in blocks[1:]:
             title_match = re.search(r"\*\*标题\*\*:[ \t]*(.*?)(?:\n|$)", block)
             journal_match = re.search(r"\*\*期刊\*\*:[ \t]*(.*?)(?:\n|$)", block)
             year_match = re.search(r"\((\d{4})\)", block)
@@ -79,7 +80,6 @@ def _extract_citations(tool_results: list[dict]) -> list[Citation]:
 
             title = title_match.group(1).strip() if title_match and title_match.group(1).strip() else ""
             journal = journal_match.group(1).strip() if journal_match and journal_match.group(1).strip() else ""
-            # Fallback: use journal as title when title is empty
             if not title and journal:
                 title = journal
 
@@ -88,6 +88,19 @@ def _extract_citations(tool_results: list[dict]) -> list[Citation]:
                     title=title or "未知标题",
                     journal=journal,
                     year=year_match.group(1) if year_match else "",
+                    relevant_text=excerpt_match.group(1).strip()[:100] if excerpt_match else "",
+                ))
+
+        # Also parse CNKI web result format: "### 文献 N\n**标题**: ...\n**摘要**: ..."
+        cnki_blocks = re.split(r"### 文献 \d+", text)
+        for block in cnki_blocks[1:]:
+            title_match = re.search(r"\*\*标题\*\*:[ \t]*(.*?)(?:\n|$)", block)
+            excerpt_match = re.search(r"\*\*摘要\*\*:[ \t]*(.+?)(?:\n|$)", block)
+            if title_match and title_match.group(1).strip():
+                citations.append(Citation(
+                    title=title_match.group(1).strip(),
+                    journal="知网网络检索",
+                    year="",
                     relevant_text=excerpt_match.group(1).strip()[:100] if excerpt_match else "",
                 ))
     return citations
@@ -140,6 +153,11 @@ def _determine_source(tool_results: list[dict]) -> str:
             result = tr.get("result", "")
             if "未找到相关文献" not in result:
                 return "local"
+    for tr in tool_results:
+        if tr["name"] == "search_cnki":
+            result = tr.get("result", "")
+            if "未在知网找到" not in result and "搜索失败" not in result:
+                return "cnki"
     return "fallback"
 
 
@@ -171,6 +189,15 @@ TOOLS = {
             "type": "object",
             "properties": {"symptoms": {"type": "string", "description": "症状描述"}},
             "required": ["symptoms"],
+        },
+    },
+    "search_cnki": {
+        "function": search_cnki,
+        "description": "🏗️ 当本地知识库无结果时，通过网络搜索知网论文摘要作为补充。",
+        "parameters": {
+            "type": "object",
+            "properties": {"query": {"type": "string", "description": "搜索查询"}},
+            "required": ["query"],
         },
     },
 }

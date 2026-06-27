@@ -1,5 +1,7 @@
 """Tool definitions for the Pet Vet RAG Agent."""
 
+import os
+import requests
 from src.retrieval.hybrid_search import hybrid_search
 
 # Emergency warning signs that require immediate vet visit
@@ -127,3 +129,54 @@ def triage_decision(symptoms: str) -> str:
         f"建议继续观察 24-48 小时。如症状持续或加重，请咨询兽医。\n"
         f"如您对症状描述有补充，可以提供更多细节以便更准确判断。\n"
     )
+
+
+# ── 🏗️ CNKI web search tool (MCP-driven, Phase 7) ──────────────────────────
+
+TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY", "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")
+
+
+def search_cnki(query: str) -> str:
+    """当本地知识库无结果时，通过搜索引擎查找知网论文摘要作为补充。
+
+    Args:
+        query: 搜索查询（宠物猫疾病相关）。
+
+    Returns:
+        格式化的论文标题和摘要，或提示未找到。
+    """
+    if not TAVILY_API_KEY:
+        return "CNKI 搜索工具未配置（缺少 API key）。"
+
+    try:
+        resp = requests.post(
+            "https://api.tavily.com/search",
+            json={
+                "query": f"site:cnki.net 猫 {query}",
+                "search_depth": "advanced",
+                "max_results": 3,
+                "include_domains": ["cnki.net"],
+            },
+            headers={"Authorization": f"Bearer {TAVILY_API_KEY}"},
+            timeout=15,
+        )
+        data = resp.json()
+        results = data.get("results", [])
+    except Exception as e:
+        return f"CNKI 搜索失败: {e}"
+
+    if not results:
+        return "未在知网找到相关论文。"
+
+    lines = ["## 🌐 知网检索结果（来自网络搜索，非本地知识库）", ""]
+    for i, r in enumerate(results, 1):
+        title = r.get("title", "未知标题")[:100]
+        content = r.get("content", "")[:250]
+        url = r.get("url", "")
+        lines.append(f"### 文献 {i}\n**标题**: {title}\n**摘要**: {content}")
+        if url:
+            lines.append(f"**链接**: {url}")
+        lines.append("")
+
+    lines.append("⚠️ 以上结果来自网络检索，未经过本地知识库验证，仅供参考。")
+    return "\n".join(lines)
