@@ -30,7 +30,14 @@ def search_knowledge_base(query: str) -> str:
     """
     results = hybrid_search(query, top_k=5)
     if not results:
-        return "未找到相关文献。当前知识库可能未涵盖此问题。"
+        return (
+            "⚠️ 未在本地知识库找到直接相关的学术文献。\n\n"
+            "## 降级指引（基于通用宠物护理原则）\n"
+            "- 请基于**通用宠物护理常识**回答用户问题，给出观察建议和就医指引\n"
+            "- 必须标注「以下建议来自通用护理知识，非学术文献支持」\n"
+            "- 明确指出当前症状中哪些是需要警惕的危险信号\n"
+            "- 绝对不要推荐任何具体药物、剂量或治疗方案\n"
+        )
 
     lines = []
     for i, r in enumerate(results, 1):
