@@ -243,58 +243,80 @@ def render_chat():
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # Get agent response
+        # Get agent response — stream tokens for real-time display
         with st.chat_message("assistant"):
-            with st.spinner("检索文献 + Agent 推理中..."):
-                full_query = _build_full_query(prompt)
-                # 🏗️ Use structured output
-                result = st.session_state.agent.chat_structured(
-                    full_query,
-                    conversation_id=st.session_state.conv_id,
+            full_query = _build_full_query(prompt)
+
+            # 🏗️ P0: streaming — show tool calls live, then stream answer tokens
+            status_placeholder = st.empty()
+            answer_placeholder = st.empty()
+            answer_text = ""
+            tool_calls_seen = []
+
+            for event in st.session_state.agent.chat_stream(
+                full_query,
+                conversation_id=st.session_state.conv_id,
+            ):
+                if event["type"] == "tool_call":
+                    tool_calls_seen.append(event["name"])
+                    tool_names = {"search_knowledge_base": "📖 检索本地知识库",
+                                  "search_cnki": "🌐 搜索知网论文",
+                                  "analyze_symptoms": "🔬 分析症状",
+                                  "triage_decision": "🏥 评估就医紧迫性"}
+                    label = tool_names.get(event["name"], event["name"])
+                    status_placeholder.caption(f"🔄 {label}...")
+
+                elif event["type"] == "token":
+                    answer_text += event["text"]
+                    answer_placeholder.markdown(answer_text + "▌")
+
+                elif event["type"] == "done":
+                    answer_text = event["answer"]
+                    status_placeholder.empty()
+                    answer_placeholder.markdown(answer_text)
+
+            # 🏗️ Extract structured data from completed stream (no re-run)
+            from src.agent.orchestrator import _extract_citations, _extract_triage, _determine_source
+            tool_results = st.session_state.agent._last_tool_results
+            citations_raw = _extract_citations(tool_results)
+            triage = _extract_triage(tool_results, answer_text)
+            source = _determine_source(tool_results)
+            citations = [{"title": c.title, "journal": c.journal, "year": c.year, "relevant_text": c.relevant_text} for c in citations_raw]
+            requires_confirmation = triage.level in ("EMERGENCY", "URGENT")
+
+            # Show source badge
+            source_labels = {"local": "📖 本地知识库", "cnki": "🌐 知网网络检索", "fallback": "⚠️ 无文献支持"}
+            st.caption(source_labels.get(source, source))
+
+            # Show citations
+            if citations:
+                render_citations(citations)
+
+            # Show triage badge
+            if triage.level != "UNKNOWN":
+                st.divider()
+                render_triage_badge(triage.level, triage.signal, triage.reasoning)
+
+            # 🏗️ Structured confirmation
+            if requires_confirmation:
+                st.session_state.pending_confirmation = {
+                    "answer": answer_text,
+                    "citations": citations,
+                    "triage": {"level": triage.level, "signal": triage.signal, "reasoning": triage.reasoning},
+                    "source": source,
+                }
+                st.warning(f"⚠️ 检测到高风险建议，请选择是否采纳（见上方确认框）")
+            else:
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": answer_text,
+                    "structured": {"citations": citations, "triage": {"level": triage.level, "signal": triage.signal, "reasoning": triage.reasoning}},
+                })
+                save_message(
+                    st.session_state.conv_id, "assistant",
+                    answer_text,
+                    metadata_json=json.dumps({"citations": citations, "answer": answer_text}, ensure_ascii=False),
                 )
-                structured = result.to_dict()
-
-                # Show source badge
-                source_labels = {"local": "📖 本地知识库", "cnki": "🌐 知网网络检索", "fallback": "⚠️ 无文献支持"}
-                st.caption(source_labels.get(structured["source"], structured["source"]))
-
-                # Show answer
-                st.markdown(structured["answer"])
-
-                # Show citations
-                if structured["citations"]:
-                    render_citations(structured["citations"])
-
-                # Show triage badge
-                triage = structured.get("triage", {})
-                if triage.get("level") and triage["level"] != "UNKNOWN":
-                    st.divider()
-                    render_triage_badge(
-                        triage["level"],
-                        triage.get("signal", ""),
-                        triage.get("reasoning", ""),
-                    )
-
-                # 🏗️ Structured confirmation: use requires_confirmation flag
-                if structured["requires_confirmation"]:
-                    st.session_state.pending_confirmation = {
-                        "answer": structured["answer"],
-                        "citations": structured["citations"],
-                        "triage": triage,
-                        "source": structured["source"],
-                    }
-                    st.warning(f"⚠️ 检测到高风险建议，请选择是否采纳（见上方确认框）")
-                else:
-                    st.session_state.messages.append({
-                        "role": "assistant",
-                        "content": structured["answer"],
-                        "structured": structured,
-                    })
-                    save_message(
-                        st.session_state.conv_id, "assistant",
-                        structured["answer"],
-                        metadata_json=json.dumps(structured, ensure_ascii=False),
-                    )
 
 
 def main():

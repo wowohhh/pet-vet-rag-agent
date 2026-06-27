@@ -363,6 +363,125 @@ class VetAgent:
         trace.finish(fallback)
         return fallback
 
+    # ── 🏗️ Streaming output ───────────────────────────────────────────
+
+    def chat_stream(self, user_message: str, conversation_id: str = ""):
+        """Process user message with ReAct loop, yield tokens from final answer.
+
+        Tool calls run non-streaming (need full context). When the model
+        generates the final answer (no tool_calls), tokens are yielded
+        as they arrive via stream=True.
+
+        Yields:
+            {"type": "tool_call", "name": str} — tool call started
+            {"type": "token", "text": str} — answer token
+            {"type": "done", "answer": str} — complete
+        """
+        trace = Trace(query=user_message, conversation_id=conversation_id)
+        self.messages.append({"role": "user", "content": user_message})
+        self._last_tool_results = []
+
+        full_messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            *self.messages,
+        ]
+
+        tools = _build_tools_for_api()
+        tool_used = False
+        final_answer = ""
+
+        # Phase 1: ReAct loop (non-streaming for tool calls)
+        for iteration in range(MAX_ITERATIONS):
+            gen_start = time.time()
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=full_messages,
+                tools=tools,
+                tool_choice="auto" if tools else None,
+                temperature=0.3,
+                max_tokens=4096,
+            )
+            gen_duration = (time.time() - gen_start) * 1000
+
+            choice = response.choices[0]
+            msg = choice.message
+
+            if hasattr(response, "usage") and response.usage:
+                trace.log_generation(
+                    tokens=response.usage.total_tokens or 0,
+                    duration_ms=gen_duration,
+                )
+
+            if msg.tool_calls:
+                tool_used = True
+                for tool_call in msg.tool_calls:
+                    name = tool_call.function.name
+                    yield {"type": "tool_call", "name": name}
+
+                    try:
+                        args = json.loads(tool_call.function.arguments)
+                    except json.JSONDecodeError:
+                        args = {}
+
+                    tool_start = time.time()
+                    result = _execute_tool_with_retry(name, args)
+                    result = _truncate_tool_result(result)
+                    tool_duration = (time.time() - tool_start) * 1000
+
+                    trace.log_tool_call(
+                        name,
+                        success="错误" not in result[:50],
+                        duration_ms=tool_duration,
+                    )
+                    self._last_tool_results.append({"name": name, "result": result})
+
+                    full_messages.append({
+                        "role": "assistant",
+                        "content": "",
+                        "tool_calls": [{
+                            "id": tool_call.id,
+                            "type": "function",
+                            "function": {
+                                "name": name,
+                                "arguments": tool_call.function.arguments,
+                            },
+                        }],
+                    })
+                    full_messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": result,
+                    })
+                continue  # next ReAct iteration
+
+            # Phase 2: stream the final answer
+            stream = self.client.chat.completions.create(
+                model=self.model,
+                messages=full_messages,
+                temperature=0.3,
+                max_tokens=4096,
+                stream=True,
+            )
+
+            for chunk in stream:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    token = chunk.choices[0].delta.content
+                    final_answer += token
+                    yield {"type": "token", "text": token}
+
+            break  # done
+
+        # Cleanup
+        if not final_answer:
+            fallback = "抱歉，处理您的问题超时。请尝试简化问题。" + DISCLAIMER
+            final_answer = fallback
+            yield {"type": "token", "text": fallback}
+
+        final_answer = _verify_response(final_answer, tool_used)
+        self.messages.append({"role": "assistant", "content": final_answer})
+        trace.finish(final_answer)
+        yield {"type": "done", "answer": final_answer, "tool_results": self._last_tool_results}
+
     # ── 🏗️ Structured output ────────────────────────────────────────────
 
     def chat_structured(self, user_message: str, conversation_id: str = "") -> StructuredAnswer:

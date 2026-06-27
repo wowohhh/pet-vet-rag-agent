@@ -3,6 +3,7 @@
 import json
 import uuid
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from src.api import models
@@ -93,6 +94,38 @@ def chat(req: ChatRequest) -> ChatResponse:
         requires_confirmation=structured.get("requires_confirmation", False),
         source=structured.get("source", "local"),
     )
+
+
+@router.post("/chat/stream")
+def chat_stream(req: ChatRequest):
+    """🏗️ SSE streaming chat endpoint — yields tokens as they arrive."""
+    conv_id = req.conversation_id or str(uuid.uuid4())[:8]
+
+    if not models.get_conversation(conv_id):
+        models.create_conversation(
+            conv_id,
+            pet_name=req.pet_name,
+            pet_breed=req.pet_breed,
+            pet_age=req.pet_age,
+        )
+    models.save_message(conv_id, "user", req.message)
+
+    context = ""
+    if req.pet_name:
+        context += f"宠物名: {req.pet_name}。"
+    if req.pet_breed:
+        context += f"品种: {req.pet_breed}。"
+    if req.pet_age:
+        context += f"年龄: {req.pet_age}。"
+
+    full_query = f"[宠物档案] {context}\n\n{req.message}" if context else req.message
+
+    async def generate():
+        agent = get_agent()
+        for event in agent.chat_stream(full_query):
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 @router.get("/conversations")
