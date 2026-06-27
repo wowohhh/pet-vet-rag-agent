@@ -32,7 +32,7 @@
 
 - **混合检索** — ChromaDB 向量检索 + BM25 稀疏检索 + RRF 融合排序
 - **ReAct Agent** — 从零实现的 Plan-Execute-Observe 循环，3 个 Function Calling 工具
-- **完整后端** — FastAPI + SQLite 持久化，5 个 REST 端点
+- **完整后端** — FastAPI + SQLite 持久化，6 个 REST 端点（含 SSE 流式）
 - **安全机制** — 硬约束不推荐药物、每句话引用来源、高风险建议人机协同确认
 - **可观测性** — JSONL trace 日志，记录每次对话的工具调用耗时、token 消耗
 - **本地部署** — Ollama + qwen3:4b INT4 + BGE-small-zh，RTX 4060 8GB 即可运行
