@@ -4,6 +4,10 @@ Phase 5: Human-in-the-loop confirmation dialog
 Phase 7: 🏗️ Structured output — citation cards, triage badges, precise confirmation
 """
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+
 import json
 import streamlit as st
 from src.agent.orchestrator import get_agent
@@ -255,11 +259,14 @@ def render_chat():
     # Chat input
     if prompt := st.chat_input("输入您的问题，如「猫咪打喷嚏三天了怎么办」"):
         if not st.session_state.conv_id:
-            st.session_state.conv_id = create_conversation(
+            import uuid
+            st.session_state.conv_id = str(uuid.uuid4())[:8]
+            create_conversation(
+                st.session_state.conv_id,
                 pet_name=st.session_state.pet_profile.get("name", ""),
                 pet_breed=st.session_state.pet_profile.get("breed", ""),
                 pet_age=st.session_state.pet_profile.get("age", ""),
-            )["id"]
+            )
 
         # Add user message
         st.session_state.messages.append({"role": "user", "content": prompt})
