@@ -23,6 +23,7 @@ from src.agent.tools import search_knowledge_base, analyze_symptoms, triage_deci
 from src.agent.context import trim_conversation
 from src.observability.logger import Trace
 from src.observability.monitor import record_latency
+from src.mcp.tool_provider import MCPToolProvider
 
 
 # ── 🏗️ Structured output types ──────────────────────────────────────────
@@ -153,7 +154,30 @@ def _determine_source(tool_results: list[dict]) -> str:
     return "fallback"
 
 
-# ── Tool registry (unchanged) ───────────────────────────────────────────
+# ── 🏗️ MCP Tool Provider ──────────────────────────────────────────────────
+
+# Default to MCP provider. Falls back to TOOLS dict if set to None.
+_mcp_provider: MCPToolProvider | None = MCPToolProvider()
+
+
+def use_mcp(enabled: bool = True) -> None:
+    """Enable or disable MCP tool provider.
+
+    When disabled, the orchestrator falls back to the direct TOOLS dict.
+    This is useful for testing or environments without MCP dependencies.
+    """
+    global _mcp_provider
+    _mcp_provider = MCPToolProvider() if enabled else None
+
+
+def get_tool_provider_status() -> dict:
+    """Return MCP provider status for monitoring / UI display."""
+    if _mcp_provider:
+        return _mcp_provider.get_status()
+    return {"mode": "disabled", "reason": "using direct TOOLS dict"}
+
+
+# ── Tool registry (direct mode fallback) ────────────────────────────────────
 
 TOOLS = {
     "search_knowledge_base": {
@@ -196,6 +220,14 @@ TOOLS = {
 
 
 def _build_tools_for_api() -> list[dict]:
+    """Build OpenAI-compatible tool definitions.
+
+    Uses MCP provider when available; falls back to direct TOOLS dict.
+    """
+    if _mcp_provider:
+        return _mcp_provider.list_tools_openai()
+
+    # Direct mode fallback
     return [
         {
             "type": "function",
@@ -210,7 +242,24 @@ def _build_tools_for_api() -> list[dict]:
 
 
 def _execute_tool_with_retry(name: str, args: dict, max_retries: int = 2) -> str:
-    """🔧 Execute tool with retry on failure, then degrade gracefully."""
+    """🔧 Execute tool with retry on failure, then degrade gracefully.
+
+    Routes through MCP provider when available; falls back to TOOLS dict.
+    """
+    # MCP mode: delegate to provider
+    if _mcp_provider and name in _mcp_provider.get_tool_names():
+        last_error = ""
+        for attempt in range(max_retries + 1):
+            try:
+                result = _mcp_provider.call_tool(name, args)
+                return str(result)
+            except Exception as e:
+                last_error = str(e)
+                if attempt < max_retries:
+                    time.sleep(0.5 * (attempt + 1))
+        return f"工具 '{name}' 执行失败 (MCP): {last_error}\n[系统提示] 该工具暂时不可用。"
+
+    # Direct mode fallback
     if name not in TOOLS:
         return f"错误: 未知工具 '{name}'"
 
@@ -247,7 +296,10 @@ def _verify_response(answer: str, tool_used: bool) -> str:
 # ── Agent class ──────────────────────────────────────────────────────────
 
 class VetAgent:
-    """Enhanced RAG Agent with failure recovery, observability, and structured output."""
+    """Enhanced RAG Agent with failure recovery, observability, and structured output.
+
+    Uses MCP (Model Context Protocol) for tool discovery and execution by default.
+    """
 
     def __init__(self, base_url: str | None = None, model: str | None = None):
         self.client = OpenAI(
@@ -258,6 +310,11 @@ class VetAgent:
         self.messages: list[dict] = []
         # 🏗️ Track tool results for structured output extraction
         self._last_tool_results: list[dict] = []
+
+    @staticmethod
+    def get_mcp_status() -> dict:
+        """Return MCP tool provider status for monitoring."""
+        return get_tool_provider_status()
 
     def reset(self):
         self.messages = []

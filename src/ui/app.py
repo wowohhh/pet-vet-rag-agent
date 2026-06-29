@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 import streamlit as st
 from src.agent.orchestrator import get_agent, _extract_citations, _extract_triage, _determine_source
+from src.agent.multi_agent import MultiAgentOrchestrator
 from src.retrieval.vector_store import get_chunk_count
 from src.api.models import (
     create_conversation, get_conversation, get_messages,
@@ -31,6 +32,8 @@ st.set_page_config(page_title="宠物兽医知识助手", page_icon="🐱", layo
 def init_session():
     defaults = {
         "agent": get_agent(),
+        "multi_agent": MultiAgentOrchestrator(),
+        "use_multi_agent": False,  # toggle between single/multi agent mode
         "messages": [],
         "conv_id": "",
         "pending_confirmation": None,
@@ -63,6 +66,17 @@ def render_sidebar():
         st.divider()
         st.metric("知识库片段", get_chunk_count())
 
+        # 🏗️ Agent mode toggle
+        st.divider()
+        st.caption("🤖 Agent 模式")
+        st.session_state.use_multi_agent = st.toggle(
+            "Multi-Agent 协作",
+            value=st.session_state.use_multi_agent,
+            help="开启后使用检索专家 + 临床专家双 Agent 协作，代替单 Agent 模式"
+        )
+        if st.session_state.use_multi_agent:
+            st.caption("🔍 检索专家 → 🏥 临床专家")
+
         # Conversation context
         conv_msgs = st.session_state.agent.messages
         turns = len([m for m in conv_msgs if m['role'] == 'user'])
@@ -84,6 +98,13 @@ def render_sidebar():
         lat = get_latency_stats()
         if lat["count"]:
             st.caption(f"⏱️ 延迟: avg {lat['avg_ms']}ms | last {lat['count']} calls")
+
+        # 🏗️ MCP tool provider status
+        try:
+            mcp = st.session_state.agent.get_mcp_status()
+            st.caption(f"🔌 MCP: {mcp.get('tools', '?')} tools ({mcp.get('mode', '?')})")
+        except Exception:
+            pass
 
         # Recent traces
         traces = get_recent_traces(5)
@@ -107,6 +128,7 @@ def render_sidebar():
 
         if st.button("🗑 新建对话", use_container_width=True):
             st.session_state.agent.reset()
+            st.session_state.multi_agent.reset()
             st.session_state.messages = []
             st.session_state.conv_id = ""
             st.rerun()
@@ -152,31 +174,73 @@ def render_chat():
 
         with st.chat_message("assistant"):
             full_query = _build_full_query(prompt)
-            status_placeholder = st.empty()
-            answer_placeholder = st.empty()
-            answer_text = ""
 
-            for event in st.session_state.agent.chat_stream(full_query, conversation_id=st.session_state.conv_id):
-                if event["type"] == "tool_call":
-                    labels = {"search_knowledge_base": "📖 检索本地知识库", "search_cnki": "🌐 搜索知网论文",
-                              "analyze_symptoms": "🔬 分析症状", "triage_decision": "🏥 评估就医紧迫性"}
-                    status_placeholder.caption(f"🔄 {labels.get(event['name'], event['name'])}...")
-                elif event["type"] == "token":
-                    answer_text += event["text"]
-                    answer_placeholder.markdown(answer_text + "▌")
-                elif event["type"] == "done":
-                    answer_text = event["answer"]
-                    status_placeholder.empty()
-                    answer_placeholder.markdown(answer_text)
+            if st.session_state.use_multi_agent:
+                # ── Multi-Agent mode ──────────────────────────────────
+                status_placeholder = st.empty()
+                research_placeholder = st.empty()
+                answer_placeholder = st.empty()
+                answer_text = ""
+                research_result = ""
 
-            # Extract structured data
-            tool_results = st.session_state.agent._last_tool_results
-            citations_raw = _extract_citations(tool_results)
-            triage = _extract_triage(tool_results, answer_text)
-            source = _determine_source(tool_results)
+                for stage in st.session_state.multi_agent.process_stream(full_query):
+                    if stage.status == "running":
+                        status_placeholder.caption(f"🔄 {stage.label} 正在工作...")
+                    elif stage.status == "done":
+                        status_placeholder.caption(f"✅ {stage.label} 完成")
+                        if stage.name == "research":
+                            research_result = stage.result
+                            with research_placeholder.expander("📋 查看检索报告"):
+                                st.markdown(stage.result)
+                        elif stage.name == "clinician":
+                            answer_text = stage.result
+                    elif stage.status == "error":
+                        status_placeholder.caption(f"❌ {stage.label} 出错")
+
+                status_placeholder.empty()
+                answer_placeholder.markdown(answer_text)
+
+                # Extract structured data from results
+                citations_raw = _extract_citations(
+                    [{"name": "search_knowledge_base", "result": research_result}]
+                ) if research_result else []
+                triage = _extract_triage(
+                    [{"name": "triage_decision", "result": answer_text}], answer_text
+                )
+                source = "local" if research_result and "未找到相关文献" not in research_result else "cnki"
+
+                requires_confirmation = triage.level in ("EMERGENCY", "URGENT")
+
+            else:
+                # ── Single-Agent mode (existing) ──────────────────────
+                status_placeholder = st.empty()
+                answer_placeholder = st.empty()
+                answer_text = ""
+
+                for event in st.session_state.agent.chat_stream(full_query, conversation_id=st.session_state.conv_id):
+                    if event["type"] == "tool_call":
+                        labels = {"search_knowledge_base": "📖 检索本地知识库", "search_cnki": "🌐 搜索知网论文",
+                                  "analyze_symptoms": "🔬 分析症状", "triage_decision": "🏥 评估就医紧迫性"}
+                        status_placeholder.caption(f"🔄 {labels.get(event['name'], event['name'])}...")
+                    elif event["type"] == "token":
+                        answer_text += event["text"]
+                        answer_placeholder.markdown(answer_text + "▌")
+                    elif event["type"] == "done":
+                        answer_text = event["answer"]
+                        status_placeholder.empty()
+                        answer_placeholder.markdown(answer_text)
+
+                # Extract structured data
+                tool_results = st.session_state.agent._last_tool_results
+                citations_raw = _extract_citations(tool_results)
+                triage = _extract_triage(tool_results, answer_text)
+                source = _determine_source(tool_results)
+
+                requires_confirmation = triage.level in ("EMERGENCY", "URGENT")
+
+            # ── Shared: render structured output ───────────────────────
             citations = [{"title": c.title, "journal": c.journal, "year": c.year, "relevant_text": c.relevant_text}
                          for c in citations_raw]
-            requires_confirmation = triage.level in ("EMERGENCY", "URGENT")
 
             render_source_badge(source)
             render_citations(citations)

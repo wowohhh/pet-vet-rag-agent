@@ -134,7 +134,7 @@ python -m src.cli
 
 ## Agent 核心能力
 
-### 四个 Tool
+### 四个 Tool（支持 MCP 协议标准化接入）
 
 | Tool | 功能 | 关键技术 |
 |------|------|---------|
@@ -142,6 +142,28 @@ python -m src.cli
 | `analyze_symptoms` | 分析症状 | 结构化提取症状 + 可能疾病方向 + 文献依据 |
 | `triage_decision` | 就医决策 | 急诊信号检测 → 急诊/尽快就医/居家观察 三级 |
 | `search_cnki` | 知网搜索 | 本地无结果时通过网络检索知网论文摘要作为补充 |
+
+> 🏗️ 4 个工具已包装为 **MCP Server**（`src/mcp/server.py`），支持 MCP stdio 协议。
+> 任何 MCP 兼容客户端（Claude Code、Cursor 等）可直接发现并调用项目工具。
+> 新增工具只需编写一个 MCP Server，核心 Agent 代码零改动。
+
+### Multi-Agent 协作（Orchestrator-Worker 模式）
+
+开启 Multi-Agent 模式后，系统自动拆分为两个专职 Agent：
+
+```
+用户问题 → 🔍 检索专家 (Research Agent) → 🏥 临床专家 (Clinician Agent) → 回答
+              │                                │
+              └─ search_knowledge_base          └─ analyze_symptoms
+              └─ search_cnki                   └─ triage_decision
+```
+
+| Agent | 职责 | 工具 | 输出 |
+|-------|------|------|------|
+| 🔍 检索专家 | 文献检索 + 结构化报告 | KB 检索 + CNKI | 结构化检索报告 |
+| 🏥 临床专家 | 症状分析 + 分诊 + 回答 | 症状分析 + triage | 带引用的最终回答 |
+
+> Streamlit sidebar 提供单/多 Agent 模式切换。Multi-Agent 模式下可查看检索专家的中间报告。
 
 ### 安全 Guardrails
 
@@ -207,10 +229,15 @@ rag/
 │   │   └── hybrid_search.py # Dense + BM25 + RRF
 │   │
 │   ├── agent/
-│   │   ├── orchestrator.py  # ReAct Agent 核心
+│   │   ├── orchestrator.py  # ReAct Agent 核心（单 Agent 模式）
+│   │   ├── multi_agent.py   # 🏗️ Multi-Agent 编排（双 Agent 协作）
 │   │   ├── tools.py         # 4 个 Tool 实现
 │   │   ├── prompts.py       # System prompt + guardrails
 │   │   └── context.py       # 上下文工程 + token 预算
+│   │
+│   ├── mcp/                 # 🏗️ MCP 协议支持
+│   │   ├── server.py        # MCP stdio 服务器（包装 4 个工具）
+│   │   └── tool_provider.py # MCP 工具发现与调度（嵌入式 + 外部双模式）
 │   │
 │   ├── api/
 │   │   ├── main.py      # FastAPI app 工厂

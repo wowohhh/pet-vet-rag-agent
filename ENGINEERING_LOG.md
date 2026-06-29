@@ -153,6 +153,42 @@
 
 ---
 
+## 11. MCP 集成：工具标准化与协议解耦（架构演进）
+
+**现象**: 4 个工具的手写 JSON Schema 和调度逻辑分散在 tools.py 和 orchestrator.py 中。新增一个工具需要改 3 处代码（函数定义 + TOOLS 字典 + 参数 schema），外部工具（如 Claude Code）无法直接调用项目工具。
+
+**根因**: 工具定义与调度逻辑紧耦合。OpenAI Function Calling schema 是项目内部格式，不兼容 MCP 协议。
+
+**解决**: 引入 MCP (Model Context Protocol) 作为工具标准化层——
+1. `src/mcp/server.py`: 4 个工具包装为 MCP Server，支持 stdio 传输，任何 MCP 客户端可发现并调用
+2. `src/mcp/tool_provider.py`: MCPToolProvider 提供统一接口（`list_tools_openai()` + `call_tool()`），orchestrator 不关心工具来自直接调用还是 MCP 协议
+3. orchestrator 添加 fallback 机制：MCP provider 可用时走 MCP，不可用时降级回直接 TOOLS 字典
+4. Streamlit sidebar 显示 MCP 状态（模式、工具数）
+
+**启示**: MCP 本质是工具层的"接口隔离"——和手写 JSON Schema 的功能完全等价，但架构收益巨大。面试时可以讲两段故事：①"先手写理解底层" ②"再标准化为 MCP 实现解耦"。新增工具只需写一个 MCP Server，核心代码零改动。
+
+**关键词**: MCP, Model Context Protocol, tool standardization, architecture evolution, protocol decoupling
+
+---
+
+## 12. Multi-Agent 拆分：从单 Agent 全能型到双 Agent 协作（架构演进）
+
+**现象**: 单 Agent（VetAgent）承载所有职责——检索、症状分析、分诊、回答生成——共用一个 system prompt。随功能增长，prompt 越来越长，行为边界模糊。面试时 JD 普遍要求 Multi-Agent 经验（6/10 JD）。
+
+**根因**: 单 Agent 的 system prompt 是"全能型"设计——一条 prompt 同时描述检索策略、临床推理规则、用户沟通格式。职责混在一起导致：① prompt 修改时容易引入冲突 ② 工具调用顺序不可控（检索和分析可能同时触发） ③ 无法独立优化单个环节。
+
+**解决**: 引入 Orchestrator-Worker 双 Agent 架构——
+1. **Research Agent（检索专家）**: 专注文献检索（KB + CNKI），输出结构化检索报告。只持有 2 个检索类工具。
+2. **Clinician Agent（临床专家）**: 接收检索报告 + 用户问题，负责症状分析 + 分诊 + 回答生成。只持有 2 个临床类工具。
+3. **MultiAgentOrchestrator**: rule-based 调度器，按 research → clinical 固定流水线执行。
+4. Streamlit sidebar 增加 Multi-Agent 模式开关，开启后显示双 Agent 实时工作状态和中间检索报告。
+
+**启示**: Multi-Agent 的价值不在效率（反而多了 1 次 LLM 调用），而在**职责分离**和**可演进性**。检索专家可以独立升级（换 embedding、换检索策略）不影响临床逻辑。面试核心故事："单 Agent prompt 膨胀到一定规模后行为不稳定，拆成专职 Agent 后每个都有清晰的职责边界。"
+
+**关键词**: Multi-Agent, Orchestrator-Worker, specialist agents, responsibility separation, architecture evolution
+
+---
+
 ## 总结
 
 | # | 问题 | 根因类型 | 通用度 |
@@ -167,3 +203,5 @@
 | 8 | Ollama env var 重启丢失 | Windows 环境变量传递 | 中 |
 | 9 | Streamlit 不支持流式 SSE | 框架架构限制 | 低 |
 | 10 | 结构化输出字段提取 | 同 #7（正则语义） | 中 |
+| 11 | MCP 工具标准化与协议解耦 | 架构演进设计 | 高 |
+| 12 | Multi-Agent 双 Agent 职责分离 | 架构演进设计 | 高 |
